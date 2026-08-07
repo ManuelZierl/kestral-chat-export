@@ -1,0 +1,73 @@
+{
+  "format_version": 1,
+  "id": "com.ma-zierl.kestral-chat-export",
+  "version": "0.1.2",
+  "display_name": "Chat Export",
+  "description": "Adds an action inside Chat for downloading the conversation you're viewing as Markdown, plain text, JSON, or safe HTML.",
+  "publisher": {
+    "name": "Kestral reference apps"
+  },
+  "license": "MIT",
+  "icon": "ui/icon.svg",
+  "min_host_version": "0.1.0-alpha.1",
+  "manifest": {
+    "capabilities": [],
+    "surfaces": [
+      {
+        "name": "thread-export",
+        "kind": "card",
+        "title": "Export conversation",
+        "description": "Download the conversation you're viewing in a portable format.",
+        "intents": [
+          {
+            "provider": "chat",
+            "capability": "chat.read_thread"
+          }
+        ],
+        "ui": {
+          "entry": "ui/index.html"
+        }
+      }
+    ],
+    "extension_contributions": [
+      {
+        "target_app": "chat",
+        "extension_point": "thread-actions",
+        "contract_version": 1,
+        "surface": "thread-export"
+      }
+    ],
+    "grant_requests": [
+      {
+        "scope": {
+          "kind": "exact-capability",
+          "provider": "chat",
+          "capability": "chat.read_thread"
+        },
+        "data_scope": {
+          "kind": "all-resources"
+        },
+        "condition": "silent",
+        "reason": "Read the conversation shown in Chat when you use its export card. This permission covers all current and future conversations.",
+        "duration": {
+          "kind": "non-expiring"
+        }
+      }
+    ]
+  },
+  "backend": {
+    "kind": "none"
+  },
+  "data": {
+    "kind": "none"
+  },
+  "integrity": {
+    "algorithm": "sha256",
+    "assets": {
+      "ui/index.html": "sha256-163b5197ceea9ca3c6bef51f836e6b067b0237e9a0ea47706a280bfa284ecb6d",
+      "ui/icon.svg": "sha256-77c0c2bb5acc7ab825f595ad8808f97db4bd6ac686989a5a7a559449500d4bff",
+      "ui/LICENSE": "sha256-fdfe812ae7f30bf78d5247eb0c62938d8a79f7d4196a5761e3cba415da16683a",
+      "ui/THIRD-PARTY-NOTICES.txt": "sha256-e6f86aca81ebc977f756a09ad3b269ae6d5b043a146e582a84bea3cfe3177f8f"
+    }
+  }
+}
