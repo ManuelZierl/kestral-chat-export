@@ -41,7 +41,7 @@ export function exactKeys(value, expected, label) {
 }
 
 function nonEmpty(value, label) {
-  if (typeof value !== "string" || value.length === 0) throw new Error(`${label} must be a non-empty string`);
+  if (typeof value !== "string" || value.trim().length === 0) throw new Error(`${label} must be a non-empty string`);
 }
 
 function commit(value, label) {
@@ -54,6 +54,12 @@ function semver(value, label) {
 
 function validateDate(value, label) {
   if (typeof value !== "string" || !ISO_DATE.test(value) || Number.isNaN(Date.parse(value))) throw new Error(`${label} must be an ISO date-time`);
+  // Date.parse accepts impossible calendar dates and 24:00 by rolling them
+  // forward. An attestation must describe the supplied date, not a repair.
+  const date = value.slice(0, 10);
+  if (new Date(`${date}T00:00:00Z`).toISOString().slice(0, 10) !== date || Number(value.slice(11, 13)) > 23) {
+    throw new Error(`${label} must be an ISO date-time`);
+  }
 }
 
 function validateLifecycle(lifecycle) {
@@ -94,7 +100,7 @@ export function validateObservations(value) {
   exactKeys(value, ["tested_at", "platforms", "lifecycle"], "observations");
   validateDate(value.tested_at, "observations.tested_at");
   if (!Array.isArray(value.platforms) || value.platforms.length === 0) throw new Error("observations.platforms must contain at least one platform");
-  if (value.platforms.some((platform) => typeof platform !== "string" || platform.length === 0)) throw new Error("observations.platforms must contain non-empty strings");
+  if (value.platforms.some((platform) => typeof platform !== "string" || platform.trim().length === 0)) throw new Error("observations.platforms must contain non-empty strings");
   if (new Set(value.platforms).size !== value.platforms.length) throw new Error("observations.platforms must not contain duplicates");
   validateLifecycle(value.lifecycle);
   return value;

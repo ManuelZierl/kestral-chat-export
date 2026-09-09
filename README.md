@@ -22,7 +22,13 @@ download; the app cannot choose its destination or read files from the device.
 To keep the contribution responsive, one export is limited to 10,000 public
 messages, 8 MiB of transcript data, and 32 MiB of formatted output. Chat Export
 reports a clear error instead of retaining or downloading content beyond those
-limits.
+limits, including thread metadata in an empty conversation. Character limits
+follow Chat's Unicode character contract; aggregate limits count UTF-8 bytes.
+
+Switching conversations discards a pending export. A cancelled or declined read
+does not download a file or require broader permissions. Temporary download links
+and transcript URLs are cleaned up after handoff, on failure, and on surface
+teardown.
 
 The HTML format escapes all conversation content and includes a deny-by-default
 Content Security Policy. Other formats are downloaded as text and are not rendered
@@ -66,6 +72,7 @@ source path:
 
 ```sh
 npm ci
+npm audit --audit-level=moderate
 npm run check
 npm test
 npm run test:package-schema -- /absolute/path/to/pinned-kestral/schemas/app.schema.json
@@ -79,8 +86,9 @@ license and those notices as integrity-listed package assets. It does not run a
 Kestral host or a Tauri test. The package digest is the canonical Kestral
 digest over `app.json` and every declared payload file.
 
-CI checks the package schema from a pinned public Kestral commit, checks the
-canonical digest, rebuilds the package reproducibly, and requires the checked-
+CI checks development-dependency advisories, validates the package schema from a
+pinned public Kestral commit, checks the canonical digest, rebuilds the package
+reproducibly, and requires the checked-
 in `dist/` output to remain unchanged. This repository owns its dependencies,
 tests, and package output. It is ignored by the Kestral core checkout.
 
@@ -95,7 +103,7 @@ tests, and package output. It is ignored by the Kestral core checkout.
    request unchecked by default; nothing is granted by installing the package.
 
 Chat Export requests no capability of its own and declares no app-owned data.
-When the grant is denied, the export action remains unavailable and no denied
-grant is treated as authority. Each later export still supplies the exact
-visible thread resource ID through the normal Kestral action path. The frame
+Without a matching grant, an attempted export is refused without a download;
+no denied grant is treated as authority. Each later export still supplies the
+exact visible thread resource ID through the normal Kestral action path. The frame
 cannot read local files or choose the browser download destination.

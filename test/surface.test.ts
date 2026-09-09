@@ -367,3 +367,128 @@ describe("Chat Export surface", () => {
     expect(createObjectURL).not.toHaveBeenCalled();
   });
 });
+
+describe("export lifecycle regressions", () => {
+  it("ignores repeated clicks before Svelte updates disabled controls", async () => {
+    const surface = renderSurface(vi.fn().mockReturnValue(new Promise(() => {})));
+    const download = buttonNamed("Download Markdown");
+    download.click();
+    download.click();
+    await tick();
+    expect(surface.invokeScoped).toHaveBeenCalledOnce();
+  });
+
+  it("does not continue pagination or download after the component is destroyed", async () => {
+    let finishRead!: (value: unknown) => void;
+    const surface = renderSurface(vi.fn().mockReturnValue(new Promise((resolve) => { finishRead = resolve; })));
+    buttonNamed("Download Markdown").click();
+    await tick();
+    await unmount(mounted.pop()!);
+    finishRead({ result: { kind: "completed", result: { ...page, next_cursor: 0 } } });
+    await tick();
+    expect(surface.invokeScoped).toHaveBeenCalledOnce();
+    expect(createObjectURL).not.toHaveBeenCalled();
+  });
+
+  it("cleans up the link and transcript URL if the browser rejects the download", async () => {
+    renderSurface();
+    vi.mocked(HTMLAnchorElement.prototype.click).mockImplementationOnce(() => {
+      throw new Error("Download unavailable");
+    });
+    buttonNamed("Download Markdown").click();
+    await vi.waitFor(() => {
+      expect(document.querySelector('[role="alert"]')?.textContent).toContain("Download unavailable");
+    });
+    expect(document.querySelector("a[download]")).toBeNull();
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:kestral-chat-export");
+    expect(document.querySelector("#export-status")).toBeNull();
+  });
+
+  it.each(["cancelled", "approval-denied"])("does not suggest broader permissions for %s", async (reason) => {
+    renderSurface(vi.fn().mockResolvedValue({ result: { kind: "refused", reason } }));
+    buttonNamed("Download Markdown").click();
+    await vi.waitFor(() => expect(document.querySelector('[role="alert"]')).not.toBeNull());
+    const text = document.querySelector('[role="alert"]')?.textContent;
+    expect(text).not.toContain("grant Chat Export access to all Chat conversations");
+    expect(createObjectURL).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("export resource limits and cleanup", () => {
+  it("enforces the transcript byte limit even when the conversation has no messages", async () => {
+    renderSurface(vi.fn().mockResolvedValue({
+      result: { kind: "completed", result: {
+        ...page, messages: [], thread: { ...page.thread, updated_at: "x".repeat(8 * 1024 * 1024) },
+      } },
+    }));
+    buttonNamed("Download Markdown").click();
+    await vi.waitFor(() => expect(document.querySelector('[role="alert"]')?.textContent).toContain("8 MiB transcript limit"));
+    expect(createObjectURL).not.toHaveBeenCalled();
+  });
+
+  it("counts UTF-8 bytes rather than character counts against the transcript budget", async () => {
+    const messages = Array.from({ length: 3 }, (_, sequence) => ({
+      ...page.messages[0], message_id: `unicode-${sequence}`, sequence, text: "🪶".repeat(750_000),
+    }));
+    renderSurface(vi.fn().mockResolvedValue({ result: { kind: "completed", result: { ...page, messages } } }));
+    buttonNamed("Download Markdown").click();
+    await vi.waitFor(() => expect(document.querySelector('[role="alert"]')?.textContent).toContain("8 MiB transcript limit"));
+    expect(createObjectURL).not.toHaveBeenCalled();
+  });
+
+  it.each([10_000, 10_001])("bounds a %i-message paginated transcript", async (total) => {
+    const invokeScoped = vi.fn().mockImplementation((_capability, input) => {
+      const start = input.cursor === undefined ? 0 : input.cursor + 1;
+      const end = Math.min(start + input.limit, total);
+      const messages = Array.from({ length: end - start }, (_, index) => ({
+        ...page.messages[0], message_id: `message-${start + index}`, sequence: start + index,
+      }));
+      return Promise.resolve({ result: { kind: "completed", result: {
+        ...page, messages, next_cursor: end < total ? end - 1 : null,
+      } } });
+    });
+    renderSurface(invokeScoped);
+    buttonNamed("Download Markdown").click();
+    if (total === 10_000) {
+      await vi.waitFor(() => expect(document.querySelector("#export-status")?.textContent).toContain("10000 messages"));
+      expect(createObjectURL).toHaveBeenCalledOnce();
+    } else {
+      await vi.waitFor(() => expect(document.querySelector('[role="alert"]')?.textContent).toContain("10000-message export limit"));
+      expect(createObjectURL).not.toHaveBeenCalled();
+    }
+    expect(invokeScoped).toHaveBeenCalledTimes(Math.ceil(total / 100));
+  });
+
+  it("revokes a successful download URL on teardown without a second timer revocation", async () => {
+    vi.useFakeTimers();
+    try {
+      renderSurface();
+      buttonNamed("Download Markdown").click();
+      await vi.waitFor(() => expect(createObjectURL).toHaveBeenCalledOnce());
+      expect(revokeObjectURL).not.toHaveBeenCalled();
+      await unmount(mounted.pop()!);
+      expect(revokeObjectURL).toHaveBeenCalledExactlyOnceWith("blob:kestral-chat-export");
+      await vi.runAllTimersAsync();
+      expect(revokeObjectURL).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("revokes a successful download URL after the browser has had time to consume it", async () => {
+    vi.useFakeTimers();
+    try {
+      renderSurface();
+      buttonNamed("Download Markdown").click();
+      await vi.waitFor(() => expect(createObjectURL).toHaveBeenCalledOnce());
+      expect(revokeObjectURL).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(revokeObjectURL).toHaveBeenCalledExactlyOnceWith("blob:kestral-chat-export");
+      await unmount(mounted.pop()!);
+      expect(revokeObjectURL).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
