@@ -62,7 +62,8 @@ The package has no native backend and ships no runtime process. Node.js is only
 required to build and test the repository; the supported toolchain is Node.js
 22.19.x. At runtime, the compiled Svelte surface runs in Kestral's sandboxed
 opaque-origin frame. It has no Tauri API, filesystem access, credential access,
-or direct network access.
+or direct network access. This alpha is supported on Kestral's Windows x86_64
+and Linux x86_64 desktop releases.
 
 ## Build And Test
 
@@ -107,3 +108,15 @@ Without a matching grant, an attempted export is refused without a download;
 no denied grant is treated as authority. Each later export still supplies the
 exact visible thread resource ID through the normal Kestral action path. The frame
 cannot read local files or choose the browser download destination.
+
+## Updates, Uninstall, And Support
+
+The `v0.1.2` package is the immutable predecessor for the `0.1.3` update test.
+Updating or disabling Chat Export does not alter conversations or files already
+downloaded through the browser. Uninstall removes the package and its grant;
+there is no app-owned data, config, secret, or surface state to retain or purge.
+Kestral keeps historical Runs and artifacts under its normal provenance rules.
+
+Manuel Zierl maintains this repository. Report ordinary defects through
+[GitHub Issues](https://github.com/ManuelZierl/kestral-chat-export/issues) and
+security-sensitive defects through [private vulnerability reporting](https://github.com/ManuelZierl/kestral-chat-export/security/advisories/new).

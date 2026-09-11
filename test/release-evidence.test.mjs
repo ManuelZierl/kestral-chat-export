@@ -77,12 +77,12 @@ test("creates schema-shaped evidence only for a clean, identity-matching package
   const root = await mkdtemp(join(tmpdir(), "kestral-release-evidence-"));
   await mkdir(join(root, "dist", "ui"), { recursive: true });
   await writeFile(join(root, "dist", "ui", "index.html"), "<!doctype html>\n");
-  await writeFile(join(root, "package.json"), JSON.stringify({ name: "kestral-chat-export", version: "0.1.2" }));
+  await writeFile(join(root, "package.json"), JSON.stringify({ name: "kestral-chat-export", version: "0.1.3" }));
   const assetDigest = `sha256-${createHash("sha256").update("<!doctype html>\n").digest("hex")}`;
   await writeFile(join(root, "dist", "app.json"), JSON.stringify({
     format_version: 1,
     id: "com.ma-zierl.kestral-chat-export",
-    version: "0.1.2",
+    version: "0.1.3",
     display_name: "Chat Export",
     description: "Example export app",
     min_host_version: "0.1.0-alpha.1",
@@ -111,7 +111,7 @@ test("creates schema-shaped evidence only for a clean, identity-matching package
     expectedRepository: "https://github.com/ManuelZierl/kestral-chat-export",
   };
   const evidence = await createEvidence(context);
-  assert.deepEqual(evidence.app, { id: "com.ma-zierl.kestral-chat-export", version: "0.1.2" });
+  assert.deepEqual(evidence.app, { id: "com.ma-zierl.kestral-chat-export", version: "0.1.3" });
   assert.equal(evidence.source.clean, true);
   assert.equal(evidence.package.digest, digest);
   assert.equal(evidence.run.workflow_url, "https://github.com/ManuelZierl/kestral-chat-export/actions/runs/12345");
