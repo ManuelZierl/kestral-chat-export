@@ -102,6 +102,17 @@ https://svelte.dev/e/invariant_violation`);
       throw new Error(`https://svelte.dev/e/invariant_violation`);
     }
   }
+  function lifecycle_outside_component(name) {
+    if (dev_fallback_default) {
+      const error = new Error(`lifecycle_outside_component
+\`${name}(...)\` can only be used during component initialisation
+https://svelte.dev/e/lifecycle_outside_component`);
+      error.name = "Svelte error";
+      throw error;
+    } else {
+      throw new Error(`https://svelte.dev/e/lifecycle_outside_component`);
+    }
+  }
 
   // node_modules/svelte/src/internal/client/errors.js
   function async_derived_orphan() {
@@ -146,6 +157,39 @@ https://svelte.dev/e/each_key_volatile`);
       throw error;
     } else {
       throw new Error(`https://svelte.dev/e/each_key_volatile`);
+    }
+  }
+  function effect_in_teardown(rune) {
+    if (dev_fallback_default) {
+      const error = new Error(`effect_in_teardown
+\`${rune}\` cannot be used inside an effect cleanup function
+https://svelte.dev/e/effect_in_teardown`);
+      error.name = "Svelte error";
+      throw error;
+    } else {
+      throw new Error(`https://svelte.dev/e/effect_in_teardown`);
+    }
+  }
+  function effect_in_unowned_derived() {
+    if (dev_fallback_default) {
+      const error = new Error(`effect_in_unowned_derived
+Effect cannot be created inside a \`$derived\` value that was not itself created inside an effect
+https://svelte.dev/e/effect_in_unowned_derived`);
+      error.name = "Svelte error";
+      throw error;
+    } else {
+      throw new Error(`https://svelte.dev/e/effect_in_unowned_derived`);
+    }
+  }
+  function effect_orphan(rune) {
+    if (dev_fallback_default) {
+      const error = new Error(`effect_orphan
+\`${rune}\` can only be used inside an effect (e.g. during component initialisation)
+https://svelte.dev/e/effect_orphan`);
+      error.name = "Svelte error";
+      throw error;
+    } else {
+      throw new Error(`https://svelte.dev/e/effect_orphan`);
     }
   }
   function effect_update_depth_exceeded() {
@@ -3075,6 +3119,17 @@ ${component_stack}
   }
 
   // node_modules/svelte/src/internal/client/reactivity/effects.js
+  function validate_effect(rune) {
+    if (active_effect === null) {
+      if (active_reaction === null) {
+        effect_orphan(rune);
+      }
+      effect_in_unowned_derived();
+    }
+    if (is_destroying_effect) {
+      effect_in_teardown(rune);
+    }
+  }
   function push_effect(effect2, parent_effect) {
     var parent_last = parent_effect.last;
     if (parent_last === null) {
@@ -3160,6 +3215,28 @@ ${component_stack}
     set_signal_status(effect2, CLEAN);
     effect2.teardown = fn;
     return effect2;
+  }
+  function user_effect(fn) {
+    validate_effect("$effect");
+    if (dev_fallback_default) {
+      define_property(fn, "name", {
+        value: "$effect"
+      });
+    }
+    var flags2 = (
+      /** @type {Effect} */
+      active_effect.f
+    );
+    var defer = !active_reaction && (flags2 & BRANCH_EFFECT) !== 0 && component_context !== null && !component_context.i;
+    if (defer) {
+      var context = (
+        /** @type {ComponentContext} */
+        component_context
+      );
+      (context.e ??= []).push(fn);
+    } else {
+      return create_user_effect(fn);
+    }
   }
   function create_user_effect(fn) {
     return create_effect(EFFECT | USER_EFFECT, fn);
@@ -5548,6 +5625,35 @@ ${component_stack}
     throw_rune_error("$props");
     throw_rune_error("$bindable");
   }
+  function onMount(fn) {
+    if (component_context === null) {
+      lifecycle_outside_component("onMount");
+    }
+    if (legacy_mode_flag && component_context.l !== null) {
+      init_update_callbacks(component_context).m.push(fn);
+    } else {
+      user_effect(() => {
+        const cleanup = untrack(fn);
+        if (typeof cleanup === "function") return (
+          /** @type {() => void} */
+          cleanup
+        );
+      });
+    }
+  }
+  function onDestroy(fn) {
+    if (component_context === null) {
+      lifecycle_outside_component("onDestroy");
+    }
+    onMount(() => () => untrack(fn));
+  }
+  function init_update_callbacks(context) {
+    var l = (
+      /** @type {ComponentContextLegacy} */
+      context.l
+    );
+    return l.u ??= { a: [], b: [], m: [] };
+  }
 
   // node_modules/svelte/src/version.js
   var PUBLIC_VERSION = "5";
@@ -5591,7 +5697,12 @@ ${component_stack}
       throw new Error(`${path} must be ${allowEmpty ? "a string" : "a non-empty string"}`);
     }
     if (maxLength !== void 0 && value.length > maxLength) {
-      throw new Error(`${path} must be at most ${maxLength} characters`);
+      let characters = 0;
+      for (const _character of value) {
+        if (++characters > maxLength) {
+          throw new Error(`${path} must be at most ${maxLength} characters`);
+        }
+      }
     }
     return value;
   }
@@ -5733,8 +5844,7 @@ ${component_stack}
       output.push(`## ${label(message)}`, "", ...metadata(message).map((value) => `_${value}_`), "");
       output.push(message.text || "_(empty message)_", "");
     }
-    return `${output.join("\n").trimEnd()}
-`;
+    return output.join("\n");
   }
   function formatPlain(page, exportedAt) {
     const output = [page.thread.title, `Exported: ${exportedAt}`, `Updated: ${page.thread.updated_at}`, ""];
@@ -5742,8 +5852,7 @@ ${component_stack}
       output.push(`${label(message)}:`, ...metadata(message).map((value) => `  ${value}`));
       output.push(message.text || "(empty message)", "");
     }
-    return `${output.join("\n").trimEnd()}
-`;
+    return output.join("\n");
   }
   function formatJson(page, exportedAt) {
     return `${JSON.stringify({ exported_at: exportedAt, thread: page.thread, messages: orderedMessages(page) }, null, 2)}
@@ -5755,7 +5864,7 @@ ${component_stack}
       return `<article data-role="${message.role}">
 <h2>${label(message)}</h2>
 <ul>${details}</ul>
-<pre>${escapeHtml(message.text)}</pre>
+<pre><span>${escapeHtml(message.text)}</span></pre>
 </article>`;
     }).join("\n");
     return `<!doctype html>
@@ -5842,7 +5951,19 @@ ${messages}
     let status = state(null);
     let error = state(null);
     let operationGeneration = 0;
+    let destroyed = false;
+    const downloadUrls = /* @__PURE__ */ new Map();
+    onDestroy(() => {
+      destroyed = true;
+      operationGeneration += 1;
+      for (const [url, timer] of downloadUrls) {
+        clearTimeout(timer);
+        URL.revokeObjectURL(url);
+      }
+      downloadUrls.clear();
+    });
     host.onInit((init2) => {
+      if (destroyed) return;
       try {
         set(context, parseThreadActionContext(init2.extensionContext), true);
         resetExportState();
@@ -5909,6 +6030,9 @@ ${messages}
         if (!thread) {
           thread = page.thread;
           transcriptBytes = threadSize(thread);
+          if (transcriptBytes > MAX_TRANSCRIPT_BYTES) {
+            throw new Error("This conversation is too large to export (8 MiB transcript limit).");
+          }
         }
         if (messages.length + page.messages.length > MAX_MESSAGES) {
           throw new Error(`This conversation exceeds the ${MAX_MESSAGES}-message export limit`);
@@ -5940,7 +6064,13 @@ ${messages}
     }
     function friendlyError(failure) {
       if (failure instanceof InvocationRefusedError) {
-        return "Permission needed. In Settings > Permissions, grant Chat Export access to all Chat conversations, then try again.";
+        if (failure.reason === "cancelled") {
+          return "The export was cancelled or timed out. No file was downloaded. Try again when you're ready.";
+        }
+        if (failure.reason === "approval-denied") {
+          return "Export approval was declined. No file was downloaded. You can try again and approve the read.";
+        }
+        return "Permission needed. In Settings > Permissions, review Chat Export's chat.read_thread permission for this conversation, then try again.";
       }
       return failure instanceof Error ? failure.message : String(failure);
     }
@@ -5950,16 +6080,29 @@ ${messages}
     }
     function downloadOutput(output, fileName, mediaType) {
       const blob = new Blob([output], { type: mediaType });
-      const url = URL.createObjectURL(blob);
       const link2 = document.createElement("a");
-      link2.href = url;
-      link2.download = fileName;
-      document.body.append(link2);
-      link2.click();
-      link2.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1e3);
+      const url = URL.createObjectURL(blob);
+      try {
+        link2.href = url;
+        link2.download = fileName;
+        document.body.append(link2);
+        link2.click();
+      } catch (failure) {
+        URL.revokeObjectURL(url);
+        throw failure;
+      } finally {
+        link2.remove();
+      }
+      downloadUrls.set(url, setTimeout(
+        () => {
+          URL.revokeObjectURL(url);
+          downloadUrls.delete(url);
+        },
+        1e3
+      ));
     }
     async function download() {
+      if (get2(busy) || destroyed) return;
       if (!get2(context)) {
         set(error, "The visible conversation is unavailable.");
         return;

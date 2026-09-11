@@ -77,12 +77,12 @@ test("creates schema-shaped evidence only for a clean, identity-matching package
   const root = await mkdtemp(join(tmpdir(), "kestral-release-evidence-"));
   await mkdir(join(root, "dist", "ui"), { recursive: true });
   await writeFile(join(root, "dist", "ui", "index.html"), "<!doctype html>\n");
-  await writeFile(join(root, "package.json"), JSON.stringify({ name: "kestral-chat-export", version: "0.1.2" }));
+  await writeFile(join(root, "package.json"), JSON.stringify({ name: "kestral-chat-export", version: "0.1.3" }));
   const assetDigest = `sha256-${createHash("sha256").update("<!doctype html>\n").digest("hex")}`;
   await writeFile(join(root, "dist", "app.json"), JSON.stringify({
     format_version: 1,
     id: "com.ma-zierl.kestral-chat-export",
-    version: "0.1.2",
+    version: "0.1.3",
     display_name: "Chat Export",
     description: "Example export app",
     min_host_version: "0.1.0-alpha.1",
@@ -111,7 +111,7 @@ test("creates schema-shaped evidence only for a clean, identity-matching package
     expectedRepository: "https://github.com/ManuelZierl/kestral-chat-export",
   };
   const evidence = await createEvidence(context);
-  assert.deepEqual(evidence.app, { id: "com.ma-zierl.kestral-chat-export", version: "0.1.2" });
+  assert.deepEqual(evidence.app, { id: "com.ma-zierl.kestral-chat-export", version: "0.1.3" });
   assert.equal(evidence.source.clean, true);
   assert.equal(evidence.package.digest, digest);
   assert.equal(evidence.run.workflow_url, "https://github.com/ManuelZierl/kestral-chat-export/actions/runs/12345");
@@ -126,4 +126,21 @@ test("creates schema-shaped evidence only for a clean, identity-matching package
   await writeFile(join(root, "dist", "ui", "index.html"), "tampered\n");
   const tamperedDigest = await packageDigest(join(root, "dist"));
   await assert.rejects(() => createEvidence({ ...context, expectedPackageDigest: tamperedDigest }), /integrity checksum mismatch/);
+});
+
+test("rejects impossible lifecycle dates rather than normalizing them", () => {
+  for (const tested_at of ["2026-02-29T12:00:00Z", "2026-04-31T12:00:00Z", "2026-08-06T24:00:00Z", "1900-02-29T12:00:00Z", "2026-02-30T12:00:00+02:00", "2026-08-06T12:60:00Z"]) {
+    assert.throws(() => validateObservations({ ...observations(), tested_at }), /ISO date-time/);
+  }
+  for (const tested_at of ["2024-02-29T23:59:59.123Z", "2000-02-29T12:00:00Z", "2026-08-06T00:00:00+02:00", "2026-08-06T23:59:59-02:00"]) {
+    assert.equal(validateObservations({ ...observations(), tested_at }).tested_at, tested_at);
+  }
+});
+
+test("rejects blank lifecycle observations and platforms", () => {
+  const value = observations();
+  assert.throws(() => validateObservations({
+    ...value, lifecycle: { ...value.lifecycle, activation: { status: "passed", observation: " \n\t " } },
+  }), /non-empty string/);
+  assert.throws(() => validateObservations({ ...value, platforms: ["   "] }), /non-empty strings/);
 });

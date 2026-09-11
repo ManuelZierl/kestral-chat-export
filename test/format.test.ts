@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { describe, expect, it } from "vitest";
 import {
   formatExport,
@@ -116,5 +118,49 @@ describe("formatExport", () => {
     expect(body).toContain("&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;");
     expect(body).not.toContain("<script>");
     expect(body).not.toContain("<img");
+  });
+});
+
+describe("export fidelity regressions", () => {
+  it("accepts Unicode titles up to the public contract's character limit", () => {
+    const title = "🪶".repeat(200);
+    expect(parseThreadPage({ ...sample, thread: { ...sample.thread, title } }).thread.title).toBe(title);
+    expect(() => parseThreadPage({
+      ...sample, thread: { ...sample.thread, title: `${title}x` },
+    })).toThrow(/thread.title/);
+  });
+
+  it.each(["markdown", "plain"] as const)("preserves the last message's whitespace in %s", (format) => {
+    const text = "Indented code  \n    \t\n";
+    const output = formatExport({ ...sample, messages: [{ ...sample.messages[0], text }] }, format);
+    expect(output.endsWith(`${text}\n`)).toBe(true);
+  });
+
+  it("preserves leading newlines in the parsed HTML transcript", () => {
+    const text = "\n\nFirst line\n  <unsafe> & text  \n";
+    const html = formatExport({ ...sample, messages: [{ ...sample.messages[0], text }] }, "html");
+    const document = new DOMParser().parseFromString(html, "text/html");
+    expect(document.querySelector("pre")?.textContent).toBe(text);
+  });
+
+  it("applies the message text limit to Unicode characters rather than UTF-16 units", () => {
+    const text = "🪶".repeat(1_048_576);
+    expect(parseThreadPage({ ...sample, messages: [{ ...sample.messages[0], text }] }).messages[0].text).toBe(text);
+    expect(() => parseThreadPage({
+      ...sample, messages: [{ ...sample.messages[0], text: `${text}x` }],
+    })).toThrow(/messages\[0\]\.text/);
+  });
+
+  it("exports only allowlisted public fields even if a provider adds private fields", () => {
+    const page = parseThreadPage({
+      ...sample,
+      private_context: "hidden page context",
+      thread: { ...sample.thread, system_prompt: "hidden system prompt" },
+      messages: [{ ...sample.messages[0], reasoning: "hidden reasoning", retry_state: "hidden retry" }],
+    });
+    const exported = JSON.parse(formatExport(page, "json"));
+    expect(exported.thread).toEqual(sample.thread);
+    expect(exported.messages).toEqual([sample.messages[0]]);
+    expect(JSON.stringify(exported)).not.toContain("hidden");
   });
 });

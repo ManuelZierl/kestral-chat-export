@@ -49,7 +49,14 @@ function stringValue(
     throw new Error(`${path} must be ${allowEmpty ? "a string" : "a non-empty string"}`);
   }
   if (maxLength !== undefined && value.length > maxLength) {
-    throw new Error(`${path} must be at most ${maxLength} characters`);
+    // JSON Schema maxLength counts Unicode code points, not UTF-16 units.
+    // Only take the slower path when the cheap code-unit bound is exceeded.
+    let characters = 0;
+    for (const _character of value) {
+      if (++characters > maxLength) {
+        throw new Error(`${path} must be at most ${maxLength} characters`);
+      }
+    }
   }
   return value;
 }
@@ -209,7 +216,7 @@ function formatMarkdown(page: ChatTranscript, exportedAt: string): string {
     output.push(`## ${label(message)}`, "", ...metadata(message).map((value) => `_${value}_`), "");
     output.push(message.text || "_(empty message)_", "");
   }
-  return `${output.join("\n").trimEnd()}\n`;
+  return output.join("\n");
 }
 
 function formatPlain(page: ChatTranscript, exportedAt: string): string {
@@ -218,7 +225,7 @@ function formatPlain(page: ChatTranscript, exportedAt: string): string {
     output.push(`${label(message)}:`, ...metadata(message).map((value) => `  ${value}`));
     output.push(message.text || "(empty message)", "");
   }
-  return `${output.join("\n").trimEnd()}\n`;
+  return output.join("\n");
 }
 
 function formatJson(page: ChatTranscript, exportedAt: string): string {
@@ -231,7 +238,7 @@ function formatHtml(page: ChatTranscript, exportedAt: string): string {
     return `<article data-role="${message.role}">
 <h2>${label(message)}</h2>
 <ul>${details}</ul>
-<pre>${escapeHtml(message.text)}</pre>
+<pre><span>${escapeHtml(message.text)}</span></pre>
 </article>`;
   }).join("\n");
   return `<!doctype html>

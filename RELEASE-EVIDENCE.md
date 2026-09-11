@@ -53,7 +53,8 @@ The observations must cover:
 9. Purge-data uninstall with package data, config, and secrets absent.
 
 The input rejects unknown fields, missing checks, duplicate platforms, malformed
-timestamps, failed statuses, and empty observations. `workflow_url` is not an
+timestamps (including impossible calendar dates), failed statuses, and blank
+observations or platform names. `workflow_url` is not an
 input: the generator derives it from `GITHUB_SERVER_URL`,
 `GITHUB_REPOSITORY`, and `GITHUB_RUN_ID`.
 

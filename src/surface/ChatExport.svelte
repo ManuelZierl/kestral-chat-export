@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onDestroy } from "svelte";
   import {
     formatExport,
     invocationResult,
@@ -67,8 +68,21 @@
   let status = $state<string | null>(null);
   let error = $state<string | null>(null);
   let operationGeneration = 0;
+  let destroyed = false;
+  const downloadUrls = new Map<string, ReturnType<typeof setTimeout>>();
+
+  onDestroy(() => {
+    destroyed = true;
+    operationGeneration += 1;
+    for (const [url, timer] of downloadUrls) {
+      clearTimeout(timer);
+      URL.revokeObjectURL(url);
+    }
+    downloadUrls.clear();
+  });
 
   host.onInit((init) => {
+    if (destroyed) return;
     try {
       context = parseThreadActionContext(init.extensionContext);
       resetExportState();
@@ -157,6 +171,9 @@
       if (!thread) {
         thread = page.thread;
         transcriptBytes = threadSize(thread);
+        if (transcriptBytes > MAX_TRANSCRIPT_BYTES) {
+          throw new Error("This conversation is too large to export (8 MiB transcript limit).");
+        }
       }
       if (messages.length + page.messages.length > MAX_MESSAGES) {
         throw new Error(`This conversation exceeds the ${MAX_MESSAGES}-message export limit`);
@@ -193,7 +210,13 @@
 
   function friendlyError(failure: unknown): string {
     if (failure instanceof InvocationRefusedError) {
-      return "Permission needed. In Settings > Permissions, grant Chat Export access to all Chat conversations, then try again.";
+      if (failure.reason === "cancelled") {
+        return "The export was cancelled or timed out. No file was downloaded. Try again when you're ready.";
+      }
+      if (failure.reason === "approval-denied") {
+        return "Export approval was declined. No file was downloaded. You can try again and approve the read.";
+      }
+      return "Permission needed. In Settings > Permissions, review Chat Export's chat.read_thread permission for this conversation, then try again.";
     }
     return failure instanceof Error ? failure.message : String(failure);
   }
@@ -209,17 +232,29 @@
 
   function downloadOutput(output: string, fileName: string, mediaType: string): void {
     const blob = new Blob([output], { type: mediaType });
-    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.href = url;
-    link.download = fileName;
-    document.body.append(link);
-    link.click();
-    link.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1_000);
+    const url = URL.createObjectURL(blob);
+    try {
+      link.href = url;
+      link.download = fileName;
+      document.body.append(link);
+      link.click();
+    } catch (failure) {
+      URL.revokeObjectURL(url);
+      throw failure;
+    } finally {
+      link.remove();
+    }
+    // Give the browser time to consume the URL, but don't retain transcript
+    // blobs if the surface is destroyed before this timer fires.
+    downloadUrls.set(url, setTimeout(() => {
+      URL.revokeObjectURL(url);
+      downloadUrls.delete(url);
+    }, 1_000));
   }
 
   async function download(): Promise<void> {
+    if (busy || destroyed) return;
     if (!context) {
       error = "The visible conversation is unavailable.";
       return;
